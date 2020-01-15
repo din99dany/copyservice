@@ -12,22 +12,18 @@ enum OPERATIONS{ CREATE_JOB, PAUSE_JOB, CANCEL_JOB, START_JOB, LIST_ALL, LIST_JO
 
 struct job
 {
-
-    char src[126];
-    char dest[126];
+    char src[226];
+    char dest[226];
     int id;
     int buffer;
     int fullsize;
     int status;
-
 };
 
 int CreateSocket()
 {
 
     int sock;
-    int conn;
-
     struct sockaddr saddr = {AF_UNIX, "testserver\0"};
     socklen_t saddrlen = sizeof(struct sockaddr);
  
@@ -39,33 +35,29 @@ int CreateSocket()
 
 job CreateJob( const char* src, const char* dest)
 {
-    struct job toRet;    
+    struct job newJob;    
     int sock = CreateSocket();
-    int operation = CREATE_JOB;
+    int command = CREATE_JOB;
 
-    write( sock, &operation, sizeof(operation) );
+    write(sock, &command, sizeof(int));
+    read(sock, &(newJob.id), sizeof(int));
 
-    read( sock, &(toRet.id), sizeof(int));
-    toRet.buffer = 0;
-    toRet.status = 1;
+    newJob.buffer = 0;
+    newJob.status = 1;
+    strcpy(newJob.src, src);
+    strcpy(newJob.dest, dest);
 
     struct stat st;
     stat(src, &st);
-    toRet.fullsize = st.st_size;
+    newJob.fullsize = st.st_size;
 
-    strcpy( toRet.src, src );
-    strcpy( toRet.dest, dest );
-
-
-    write( sock, &toRet, sizeof(toRet) );
-
+    write(sock, &newJob, sizeof(newJob));
     close(sock);
 
-    return toRet;
-
+    return newJob;
 }
 
-void ChangeStatus( struct job* tomod, int command )
+void ChangeStatus( struct job* toCHange, int command )
 {
 
     int sock = CreateSocket();
@@ -74,19 +66,19 @@ void ChangeStatus( struct job* tomod, int command )
     switch (command)
     {
     case PAUSE_JOB:
-        tomod->status = 0;
+        toCHange->status = 0;
         break;
     case START_JOB:
-        tomod->status = 1;
+        toCHange->status = 1;
         break;
     case CANCEL_JOB :
-        tomod->status = -1;
+        toCHange->status = -1;
         break;
     default :
         break;
     }   
 
-    write(sock, tomod, sizeof(struct job) );
+    write(sock, toCHange, sizeof(struct job) );
     close(sock);
 }
 
@@ -109,22 +101,22 @@ void StartJob( struct job* tomod)
 void PrinntJobWithId( int id )
 {
 
-    struct job toUpdate;
+    struct job toPrint;
     
     int sock = CreateSocket();
-    int comm = LIST_JOB;
-    write( sock, &comm, sizeof(int) );
+    int command = LIST_JOB;
+    write( sock, &command, sizeof(int) );
 
     write( sock,&(id), sizeof(int) );
-    read( sock, &toUpdate, sizeof(struct job ) );
+    read( sock, &toPrint, sizeof(struct job ) );
 
-    printf( "Job %d:\n",  toUpdate.id );
-    printf( "|--> src : %s \n", toUpdate.src );
-    printf( "|--> dest : %s \n", toUpdate.dest );
-    printf( "|--> progg : %f \n", toUpdate.buffer * 1.0 / toUpdate.fullsize * 100 );
+    printf( "Job %d:\n",  toPrint.id );
+    printf( "|--> src : %s \n", toPrint.src );
+    printf( "|--> dest : %s \n", toPrint.dest );
+    printf( "|--> progg : %f \n", toPrint.buffer * 1.0 / toPrint.fullsize * 100 );
     
-    char* statuSide[3] = { "|-->status : canceled\n", "|-->status : paused\n", "|-->status : active\n" };
-    printf( "%s", statuSide[ toUpdate.status + 1 ] );
+    char* statusBridge[3] = { "|-->status : canceled\n", "|-->status : paused\n", "|-->status : active\n" };
+    printf( "%s", statusBridge[ toPrint.status + 1 ] );
 }
 
 void PrintJob( struct job toPrint)
@@ -135,14 +127,14 @@ void PrintJob( struct job toPrint)
 void PrintAllJobs()
 {
     int sock = CreateSocket();
-    int comm = LIST_ALL;
+    int command = LIST_ALL;
 
-    write( sock, &comm, sizeof(int) );
-    int n;
-    read( sock, &n, sizeof(int) );
+    write( sock, &command, sizeof(int) );
+    int numberOfJobs;
+    read( sock, &numberOfJobs, sizeof(int) );
 
     close(sock);
-    for ( int i = 1; i <= n; ++i )
+    for ( int i = 1; i <= numberOfJobs; ++i )
     {
         PrinntJobWithId( i );
     }

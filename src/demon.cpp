@@ -15,9 +15,13 @@
 #include "job.h"
 #include "pthread.h"
 
+//mutex control shared stuff
 pthread_mutex_t lockQueue;
 
-void* workingfunction( void* v );
+void* Workingfunction( void* v );
+bool IsActiveJob( struct job* toCheck);
+void AddvanceJob( struct job* workingJob );
+void RepushJob( struct job* toAdd );
 void error(const char *msg)
 {
     perror(msg);
@@ -25,6 +29,7 @@ void error(const char *msg)
 }
 
 std::queue< struct job > Q;
+//shared stuff
 int Status[10000];
 struct job JobHistory[10000];
 
@@ -34,30 +39,31 @@ int main( )
     int id_cnt = 0;
     pthread_mutex_init( &lockQueue, NULL );
 
-     int sockfd, newsockfd, portno, pid;
-     socklen_t clilen;
-     struct sockaddr_un serv_addr = { AF_UNIX, "testserver\0" }, cli_addr;
+    int sockfd, newsockfd, portno, pid;
+    socklen_t clientConnection;
+    struct sockaddr_un serv_addr = { AF_UNIX, "testserver\0" }, clientAdress;
 
-     sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-     bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
+    sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
 
 
-    pthread_t thr[ 6 ];
-    int ids[ 6 ];
+    pthread_t threads[ 6 ];
+    int threadsIds[ 6 ];
     for ( int i = 0; i < 5; ++i )
     {
-        ids[ i ] = i;
-        pthread_create( &thr[i], NULL, workingfunction, (void*)&(ids[ i ]) );
+        threadsIds[ i ] = i;
+        pthread_create( &threads[i], NULL, Workingfunction, (void*)&(threadsIds[ i ]) );
     }
 
     printf("threads init\n");
 
      listen(sockfd,1);
-     clilen = sizeof(cli_addr);
-     while (1) {
+     clientConnection = sizeof(clientAdress);
+     while (1) 
+     {
         printf("listen ...\n");
         newsockfd = accept(sockfd, 
-            (struct sockaddr *) &cli_addr, &clilen);
+            (struct sockaddr *) &clientAdress, &clientConnection);
 
 
         int command;
@@ -68,7 +74,8 @@ int main( )
         switch (command)
         {
         case CREATE_JOB:
-        {    struct job citit;
+            {    
+            struct job citit;
             id_cnt++;
             write(newsockfd, &id_cnt, sizeof(id_cnt));
             read( newsockfd, &citit, sizeof(struct job));
@@ -79,18 +86,21 @@ int main( )
                 JobHistory[ citit.id ] = citit;
             pthread_mutex_unlock(&lockQueue);
             break;
-        }
+            }
         case LIST_ALL:
+            {
             write(newsockfd,&id_cnt,sizeof(int));
             break;
+            }
         case LIST_JOB:
-        {
+            {
             int jobjob_id = 0;
             read( newsockfd, &jobjob_id, sizeof(int));
             write( newsockfd, &(JobHistory[jobjob_id]),sizeof(struct job));
             break;
-        }
+            }
         default:
+            {
             struct job citit_stat;
             read( newsockfd, &citit_stat, sizeof(struct job));
             pthread_mutex_lock(&lockQueue);
@@ -99,12 +109,13 @@ int main( )
                 JobHistory[ citit_stat.id ].status = citit_stat.status;
             pthread_mutex_unlock(&lockQueue);
             break;
+            }
         }
         close(newsockfd);
      } 
 
-     close(sockfd);
-     return 0;
+    close(sockfd);
+    return 0;
 }
 
 bool SelectJob( struct job* toSelect)
@@ -126,36 +137,43 @@ bool SelectJob( struct job* toSelect)
     return true;
 }
 
-bool IsActiveJob( struct job* toCheck);
-void AddvanceJob( struct job* toCopy );
-void RepushJob( struct job* toCopy );
-
-void* workingfunction( void* v)
+void* Workingfunction( void* v)
 {   
-    int cnt = *((int*)v);
+    int threadId = *((int*)v);
     while ( true )
     {
-        struct job copyJob;
-        if ( SelectJob( &copyJob) )
+        struct job workingJob;
+        if ( SelectJob( &workingJob) )
         {   
             bool repush = true;
-            while (  IsActiveJob( &copyJob ) )
+            int maxInterations = 100;
+            while (  IsActiveJob( &workingJob ) )
             {   
-                printf( "I was thread %d %s %s %f\n",cnt, copyJob.src,copyJob.dest,1.0*copyJob.buffer/copyJob.fullsize*100);
-                AddvanceJob(&copyJob);
+                printf( "I was thread %d %s %s %f\n",
+                    threadId, 
+                    workingJob.src,
+                    workingJob.dest,
+                    (float)(workingJob.buffer)/workingJob.fullsize*100
+                );
                 printf("------------------------\n");
-                if ( copyJob.buffer == copyJob.fullsize )
+                
+                AddvanceJob(&workingJob);
+                maxInterations--;
+                if ( workingJob.buffer == workingJob.fullsize )
                 {
                     repush = false;
                     break;
                 }
+                if ( maxInterations <= 0 )
+                {
+                    break;
+                }
             }
 
-            if ( repush )
+            if (repush)
             {
-                RepushJob( &copyJob );
+                RepushJob( &workingJob );
             }
-
         }
     }
 }
@@ -176,25 +194,26 @@ bool IsActiveJob( struct job* toCheck)
     return toCheck->status != 0;
 }
 
-void RepushJob( struct job* toCopy )
+void RepushJob( struct job* toAdd )
 {
     pthread_mutex_lock( &lockQueue );
-        Q.push(*toCopy);
+        Q.push(*toAdd);
     pthread_mutex_unlock( &lockQueue );
 }
 
-void AddvanceJob( struct job* toCopy )
+void AddvanceJob( struct job* workingJob )
 {
 
-    int fd_s = open( toCopy->src, O_RDONLY );
-	int fd_d = open( toCopy->dest, O_WRONLY );
+    int fd_s = open( workingJob->src, O_RDONLY );
+	int fd_d = open( workingJob->dest, O_WRONLY );
 
-    char s[100];
+    char s[15];
 
-    int bRead = pread( fd_s, s, 10, toCopy->buffer );
-    pwrite( fd_d, s, bRead, toCopy->buffer );
-    toCopy->buffer += bRead;
-    JobHistory[toCopy->id].buffer += bRead;
+    int bRead = pread( fd_s, s, 10, workingJob->buffer );
+    pwrite( fd_d, s, bRead, workingJob->buffer );
+    
+    workingJob->buffer += bRead;
+    JobHistory[workingJob->id].buffer += bRead;
 
     close(fd_s);
     close(fd_d);
