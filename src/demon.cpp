@@ -1,23 +1,23 @@
-/* A simple server in the internet domain using TCP
-   The port number is passed as an argument 
-   This version runs forever, forking off a separate 
-   process for each connection
-*/
- 
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h> 
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include "job.h"
 #include <queue>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include "job.h"
+#include "pthread.h"
 
-void dostuff(int); /* function prototype */
+pthread_mutex_t lockQueue;
+
+void* workingfunction( void* v );
 void error(const char *msg)
 {
     perror(msg);
@@ -25,9 +25,13 @@ void error(const char *msg)
 }
 
 std::queue< struct job > Q;
+int Status[10000];
 
 int main( )
-{
+{       
+    int id_cnt = 0;
+    pthread_mutex_init( &lockQueue, NULL );
+
      int sockfd, newsockfd, portno, pid;
      socklen_t clilen;
      struct sockaddr_un serv_addr = { AF_UNIX, "testserver\0" }, cli_addr;
@@ -35,44 +39,152 @@ int main( )
      sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
      bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
 
-     listen(sockfd,5);
+
+    pthread_t thr[ 6 ];
+    int ids[ 6 ];
+    for ( int i = 0; i < 5; ++i )
+    {
+        ids[ i ] = i;
+        pthread_create( &thr[i], NULL, workingfunction, (void*)&(ids[ i ]) );
+    }
+
+    printf("threads init\n");
+
+     listen(sockfd,1);
      clilen = sizeof(cli_addr);
      while (1) {
         printf("listen ...\n");
         newsockfd = accept(sockfd, 
             (struct sockaddr *) &cli_addr, &clilen);
 
-        struct job citit;
-        read( newsockfd, &citit, sizeof(job) );
-        Q.push( citit );
 
-         pid = fork();
-         if (pid < 0)
-             error("ERROR on fork");
-         if (pid == 0)  {
-             close(sockfd);
-             dostuff(newsockfd);
-             exit(0);
-         }
-         else close(newsockfd);
+        int command;
+        read( newsockfd, &command, sizeof(command));
+
+        printf("Received command %d : \n",command);
+
+        switch (command)
+        {
+        case CREATE_JOB:
+            struct job citit;
+            id_cnt++;
+            write(newsockfd, &id_cnt, sizeof(id_cnt));
+            read( newsockfd, &citit, sizeof(struct job));
+            printf("%s %s\n",citit.src,citit.dest);
+            pthread_mutex_lock(&lockQueue);
+                Q.push( citit );
+                Status[citit.id] = citit.status;
+            pthread_mutex_unlock(&lockQueue);
+            break;
+
+        case LIST_ALL:
+            break;
+        case LIST_JOB:
+            break;
+        default:
+            struct job citit_stat;
+            read( newsockfd, &citit_stat, sizeof(struct job));
+            pthread_mutex_lock(&lockQueue);
+                printf("%d %d\n",citit_stat.id,citit_stat.status);
+                Status[ citit_stat.id ] = citit_stat.status;
+            pthread_mutex_unlock(&lockQueue);
+            
+        }
+        close(newsockfd);
      } 
+
      close(sockfd);
      return 0;
 }
 
-
-void dostuff (int sock)
+bool SelectJob( struct job* toSelect)
 {
 
-    std::queue< struct job > copy;
-    copy = Q;
-
-    while ( !copy.empty() )
-    {   
-        struct job topper = copy.front();
-        printf( "%s %s\n", topper.src, topper.dest );
-        copy.pop();
+    pthread_mutex_lock(&lockQueue);
+    if ( !Q.empty() )
+    {
+        (*toSelect) = Q.front();
+        Q.pop();
+        pthread_mutex_unlock(&lockQueue);
+    }
+    else
+    {
+        pthread_mutex_unlock(&lockQueue);
+        return false;
     }
     
+    return true;
+}
 
+bool IsActiveJob( struct job* toCheck);
+void AddvanceJob( struct job* toCopy );
+void RepushJob( struct job* toCopy );
+
+void* workingfunction( void* v)
+{   
+    int cnt = *((int*)v);
+    while ( true )
+    {
+        struct job copyJob;
+        if ( SelectJob( &copyJob) )
+        {   
+            bool repush = true;
+            while (  IsActiveJob( &copyJob ) )
+            {   
+                printf( "I was thread %d %s %s %f\n",cnt, copyJob.src,copyJob.dest,1.0*copyJob.buffer/copyJob.fullsize*100);
+                AddvanceJob(&copyJob);
+                printf("------------------------\n");
+                if ( copyJob.buffer == copyJob.fullsize )
+                {
+                    repush = false;
+                    break;
+                }
+            }
+
+            if ( repush )
+            {
+                RepushJob( &copyJob );
+            }
+
+        }
+    }
+}
+
+
+bool IsActiveJob( struct job* toCheck)
+{   
+    
+    pthread_mutex_lock(&lockQueue);
+        toCheck->status = Status[ toCheck->id ];
+    pthread_mutex_unlock(&lockQueue);
+
+    if ( toCheck->status == -1 )
+    {
+        toCheck->buffer = toCheck->fullsize;
+    }
+
+    return toCheck->status != 0;
+}
+
+void RepushJob( struct job* toCopy )
+{
+    pthread_mutex_lock( &lockQueue );
+        Q.push(*toCopy);
+    pthread_mutex_unlock( &lockQueue );
+}
+
+void AddvanceJob( struct job* toCopy )
+{
+
+    int fd_s = open( toCopy->src, O_RDONLY );
+	int fd_d = open( toCopy->dest, O_WRONLY );
+
+    char s[100];
+
+    int bRead = pread( fd_s, s, 10, toCopy->buffer );
+    pwrite( fd_d, s, bRead, toCopy->buffer );
+    toCopy->buffer += bRead;
+
+    close(fd_s);
+    close(fd_d);
 }
