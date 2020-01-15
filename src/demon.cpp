@@ -26,6 +26,8 @@ void error(const char *msg)
 
 std::queue< struct job > Q;
 int Status[10000];
+struct job JobHistory[10000];
+
 
 int main( )
 {       
@@ -66,7 +68,7 @@ int main( )
         switch (command)
         {
         case CREATE_JOB:
-            struct job citit;
+        {    struct job citit;
             id_cnt++;
             write(newsockfd, &id_cnt, sizeof(id_cnt));
             read( newsockfd, &citit, sizeof(struct job));
@@ -74,21 +76,29 @@ int main( )
             pthread_mutex_lock(&lockQueue);
                 Q.push( citit );
                 Status[citit.id] = citit.status;
+                JobHistory[ citit.id ] = citit;
             pthread_mutex_unlock(&lockQueue);
             break;
-
+        }
         case LIST_ALL:
+            write(newsockfd,&id_cnt,sizeof(int));
             break;
         case LIST_JOB:
+        {
+            int jobjob_id = 0;
+            read( newsockfd, &jobjob_id, sizeof(int));
+            write( newsockfd, &(JobHistory[jobjob_id]),sizeof(struct job));
             break;
+        }
         default:
             struct job citit_stat;
             read( newsockfd, &citit_stat, sizeof(struct job));
             pthread_mutex_lock(&lockQueue);
                 printf("%d %d\n",citit_stat.id,citit_stat.status);
                 Status[ citit_stat.id ] = citit_stat.status;
+                JobHistory[ citit_stat.id ].status = citit_stat.status;
             pthread_mutex_unlock(&lockQueue);
-            
+            break;
         }
         close(newsockfd);
      } 
@@ -153,7 +163,6 @@ void* workingfunction( void* v)
 
 bool IsActiveJob( struct job* toCheck)
 {   
-    
     pthread_mutex_lock(&lockQueue);
         toCheck->status = Status[ toCheck->id ];
     pthread_mutex_unlock(&lockQueue);
@@ -161,6 +170,7 @@ bool IsActiveJob( struct job* toCheck)
     if ( toCheck->status == -1 )
     {
         toCheck->buffer = toCheck->fullsize;
+        JobHistory[ toCheck->id ].buffer = toCheck->fullsize;    
     }
 
     return toCheck->status != 0;
@@ -184,6 +194,7 @@ void AddvanceJob( struct job* toCopy )
     int bRead = pread( fd_s, s, 10, toCopy->buffer );
     pwrite( fd_d, s, bRead, toCopy->buffer );
     toCopy->buffer += bRead;
+    JobHistory[toCopy->id].buffer += bRead;
 
     close(fd_s);
     close(fd_d);

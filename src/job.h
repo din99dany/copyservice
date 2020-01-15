@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <cstdio>
 
 enum OPERATIONS{ CREATE_JOB, PAUSE_JOB, CANCEL_JOB, START_JOB, LIST_ALL, LIST_JOB };
 
@@ -80,12 +81,10 @@ void ChangeStatus( struct job* tomod, int command )
         break;
     case CANCEL_JOB :
         tomod->status = -1;
-        printf("cancel job...");
         break;
     default :
         break;
     }   
-    printf("status %d \n",tomod->status);
 
     write(sock, tomod, sizeof(struct job) );
     close(sock);
@@ -105,4 +104,47 @@ void PauseJob( struct job* tomod)
 void StartJob( struct job* tomod)
 {
     ChangeStatus( tomod, (int)START_JOB);
+}
+
+void PrinntJobWithId( int id )
+{
+
+    struct job toUpdate;
+    
+    int sock = CreateSocket();
+    int comm = LIST_JOB;
+    write( sock, &comm, sizeof(int) );
+
+    write( sock,&(id), sizeof(int) );
+    read( sock, &toUpdate, sizeof(struct job ) );
+
+    printf( "Job %d:\n",  toUpdate.id );
+    printf( "|--> src : %s \n", toUpdate.src );
+    printf( "|--> dest : %s \n", toUpdate.dest );
+    printf( "|--> progg : %f \n", toUpdate.buffer * 1.0 / toUpdate.fullsize * 100 );
+    
+    char* statuSide[3] = { "|-->status : canceled\n", "|-->status : paused\n", "|-->status : active\n" };
+    printf( "%s", statuSide[ toUpdate.status + 1 ] );
+}
+
+void PrintJob( struct job toPrint)
+{
+    PrinntJobWithId( toPrint.id );
+}
+
+void PrintAllJobs()
+{
+    int sock = CreateSocket();
+    int comm = LIST_ALL;
+
+    write( sock, &comm, sizeof(int) );
+    int n;
+    read( sock, &n, sizeof(int) );
+
+    close(sock);
+    for ( int i = 1; i <= n; ++i )
+    {
+        PrinntJobWithId( i );
+    }
+
 }
