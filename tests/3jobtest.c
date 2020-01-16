@@ -10,7 +10,7 @@
 int main(int argc, char *argv[])
 {
         
-    struct job jobjob  = CreateJob("./test7.txt","./test8.txt");
+    struct job jobjob  = CreateJob("./test11.txt","./test12.txt");
 
     int i = 0;
 

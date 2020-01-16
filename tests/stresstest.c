@@ -20,7 +20,37 @@ int main()
             execv( "./2jobtest", NULL );
         else
         {
-            execv( "./3jobtest", NULL );
+            
+            pid_t pid3 = fork();
+
+            if ( pid3 == 0 )
+            {
+                execv( "./3jobtest", NULL );
+            } 
+            else 
+            {
+                pid_t pid4 = fork();
+                if ( pid4 == 0 )
+                {
+                    execv( "./4jobtest", NULL );
+                } 
+                else
+                {
+                    
+                    pid_t pid5 = fork();
+
+                    if ( pid5 == 0 )
+                    {
+                        execv( "./5jobtest", NULL );
+                    } 
+                    else
+                    {
+                        execv( "./6jobtest", NULL );
+                    }
+                    
+                }
+                
+            }
         }
     }
 

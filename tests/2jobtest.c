@@ -9,8 +9,6 @@
 
 int main(int argc, char *argv[])
 {
-    
-    struct job nouCret12 = CreateJob("./test1.txt","./test2.txt");
     struct job nouCret34 = CreateJob("./test3.txt","./test4.txt");
 
     PrintAllJobs();
