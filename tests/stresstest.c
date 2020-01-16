@@ -15,7 +15,13 @@ int main()
         execv( "./1jobtest", NULL );
     else
     {
-        execv( "./2jobtest", NULL );
+        pid_t pdi2 = fork();
+        if ( pdi2 == 0 )
+            execv( "./2jobtest", NULL );
+        else
+        {
+            execv( "./3jobtest", NULL );
+        }
     }
 
     return 0;

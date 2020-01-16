@@ -17,6 +17,7 @@ queue.o :
 tests : spellcaster.o
 	$(CC) ./tests/1jobtest.c -o 1jobtest spellcaster.o $(INCLUDE)
 	$(CC) ./tests/2jobtest.c -o 2jobtest spellcaster.o $(INCLUDE)
+	$(CC) ./tests/3jobtest.c -o 3jobtest spellcaster.o $(INCLUDE)
 	$(CC) ./tests/stresstest.c -o stresstest spellcaster.o $(INCLUDE)
 
 spellcaster.o :
@@ -28,5 +29,13 @@ clean :
 	rm -f demon
 	rm -f 1jobtest
 	rm -f 2jobtest
+	rm -f 3jobtest
 	rm -f stresstest
-	
+	rm -f test2.txt
+	rm -f test4.txt
+	rm -f test6.txt
+	rm -f test8.txt
+	touch test2.txt
+	touch test4.txt
+	touch test6.txt
+	touch test8.txt

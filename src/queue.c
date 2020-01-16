@@ -2,7 +2,8 @@
 
 void push(struct job x, struct queue* Q )
 {
-    Q->elem[++(Q->last)] = x;
+    (Q->last)++;
+    Q->elem[(Q->last)] = x;
 }
 
 struct job front( struct queue* Q )

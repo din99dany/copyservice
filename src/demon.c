@@ -33,10 +33,9 @@ void error(const char *msg)
 int Status[10000];
 struct job JobHistory[10000];
 
-
 struct queue Q;
 
-int main( )
+void DemonFunc()
 {   
     
     Q.first = 0;
@@ -62,10 +61,10 @@ int main( )
 
     printf("threads init\n");
 
-     listen(sockfd,1);
-     clientConnection = sizeof(clientAdress);
-     while (1) 
-     {
+    listen(sockfd,1);
+    clientConnection = sizeof(clientAdress);
+    while (1) 
+    {
         printf("listen ...\n");
         newsockfd = accept(sockfd, 
             (struct sockaddr *) &clientAdress, &clientConnection);
@@ -100,8 +99,10 @@ int main( )
         case LIST_JOB:
             {
             int jobjob_id = 0;
-            read( newsockfd, &jobjob_id, sizeof(int));
-            write( newsockfd, &(JobHistory[jobjob_id]),sizeof(struct job));
+            pthread_mutex_lock(&lockQueue);
+                read( newsockfd, &jobjob_id, sizeof(int));
+                write( newsockfd, &(JobHistory[jobjob_id]),sizeof(struct job));
+            pthread_mutex_unlock(&lockQueue);
             break;
             }
         default:
@@ -109,7 +110,6 @@ int main( )
             struct job citit_stat;
             read( newsockfd, &citit_stat, sizeof(struct job));
             pthread_mutex_lock(&lockQueue);
-                printf("%d %d\n",citit_stat.id,citit_stat.status);
                 Status[ citit_stat.id ] = citit_stat.status;
                 JobHistory[ citit_stat.id ].status = citit_stat.status;
             pthread_mutex_unlock(&lockQueue);
@@ -117,10 +117,62 @@ int main( )
             }
         }
         close(newsockfd);
-     } 
+    } 
 
     close(sockfd);
     return 0;
+}
+
+int main(int argc, char* argv[])
+{
+    FILE *fp= NULL;
+    pid_t process_id = 0;
+    pid_t sid = 0;
+    // Create child process
+    process_id = fork();
+    // Indication of fork() failure
+    if (process_id < 0)
+    {
+        printf("fork failed!\n");
+        // Return failure in exit status
+        exit(1);
+    }
+    // PARENT PROCESS. Need to kill it.
+    if (process_id > 0)
+    {
+        printf("process_id of child process %d \n", process_id);
+        // return success in exit status
+        exit(0);
+    }
+    //unmask the file mode
+    umask(0);
+    //set new session
+    sid = setsid();
+    if(sid < 0)
+    {
+    // Return failure
+    exit(1);
+    }
+    // Change the current working directory to root.
+    chdir("./");
+    // Close stdin. stdout and stderr
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+    // Open a log file in write mode.
+    fp = fopen ("Log.txt", "w+");
+    
+    while (1)
+    {
+        //Dont block context switches, let the process sleep for some time
+        sleep(1);
+        fprintf(fp, "ok\n");
+        fflush(fp);
+        // Implement and call some function that does core work for this daemon.
+        DemonFunc();
+    }
+    fclose(fp);
+    return (0);
 }
 
 int SelectJob( struct job* toSelect)
@@ -153,15 +205,7 @@ void* Workingfunction( void* v)
             int repush = 1;
             int maxInterations = 100;
             while (  IsActiveJob( &workingJob ) )
-            {   
-                printf( "I was thread %d %s %s %f\n",
-                    threadId, 
-                    workingJob.src,
-                    workingJob.dest,
-                    (float)(workingJob.buffer)/workingJob.fullsize*100
-                );
-                printf("------------------------\n");
-                
+            { 
                 AddvanceJob(&workingJob);
                 maxInterations--;
                 if ( workingJob.buffer == workingJob.fullsize )
